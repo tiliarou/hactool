@@ -1,6 +1,8 @@
 #include <errno.h>
 #include <stdio.h>
 #include <string.h>
+#include "pki.h"
+#include "aes.h"
 #include "extkeys.h"
 
 /**
@@ -172,6 +174,24 @@ void parse_hex_key(unsigned char *key, const char *hex, unsigned int len) {
     }
 }
 
+void extkeys_parse_titlekeys(hactool_settings_t *settings, FILE *f) {
+    char *key, *value;
+    int ret;
+    
+    while ((ret = get_kv(f, &key, &value)) != 1 && ret != -2) {
+        if (ret == 0) {
+            if (key == NULL || value == NULL) {
+                continue;
+            }
+            unsigned char rights_id[0x10];
+            unsigned char titlekey[0x10];
+            parse_hex_key(rights_id, key, sizeof(rights_id));
+            parse_hex_key(titlekey, value, sizeof(titlekey));
+            settings_add_titlekey(settings, rights_id, titlekey);
+        }
+    }
+}
+
 void extkeys_initialize_keyset(nca_keyset_t *keyset, FILE *f) {
     char *key, *value;
     int ret;
@@ -204,13 +224,10 @@ void extkeys_initialize_keyset(nca_keyset_t *keyset, FILE *f) {
                 parse_hex_key(keyset->header_kek_source, value, sizeof(keyset->header_kek_source));
                 matched_key = 1;
             } else if (strcmp(key, "header_key_source") == 0) {
-                parse_hex_key(keyset->encrypted_header_key, value, sizeof(keyset->encrypted_header_key));
+                parse_hex_key(keyset->header_key_source, value, sizeof(keyset->header_key_source));
                 matched_key = 1;
             } else if (strcmp(key, "header_key") == 0) {
                 parse_hex_key(keyset->header_key, value, sizeof(keyset->header_key));
-                matched_key = 1;
-            } else if (strcmp(key, "encrypted_header_key") == 0) {
-                parse_hex_key(keyset->encrypted_header_key, value, sizeof(keyset->encrypted_header_key));
                 matched_key = 1;
             } else if (strcmp(key, "package2_key_source") == 0) {
                 parse_hex_key(keyset->package2_key_source, value, sizeof(keyset->package2_key_source));
@@ -235,6 +252,11 @@ void extkeys_initialize_keyset(nca_keyset_t *keyset, FILE *f) {
                 matched_key = 1;
             } else if (strcmp(key, "tsec_key") == 0) {
                 parse_hex_key(keyset->tsec_key, value, sizeof(keyset->tsec_key));
+                matched_key = 1;
+            }  else if (strcmp(key, "beta_nca0_exponent") == 0) {
+                unsigned char exponent[0x100] = {0};
+                parse_hex_key(exponent, value, sizeof(exponent));
+                pki_set_beta_nca0_exponent(exponent);
                 matched_key = 1;
             } else {
                 char test_name[0x100];
@@ -330,5 +352,48 @@ void extkeys_initialize_keyset(nca_keyset_t *keyset, FILE *f) {
             }
         }
     }
+}
+
+
+int settings_has_titlekey(hactool_settings_t *settings, const unsigned char *rights_id) {
+    return settings_get_titlekey(settings, rights_id) != NULL;
+}
+
+void settings_add_titlekey(hactool_settings_t *settings, const unsigned char *rights_id, const unsigned char *titlekey) {
+    if (settings_has_titlekey(settings, rights_id)) {
+        fprintf(stderr, "Error: Rights ID ");
+        for (unsigned int i = 0; i < 0x10; i++) {
+            fprintf(stderr, "%02X", rights_id[i]);
+        }
+        fprintf(stderr, " already has a corresponding titlekey!\n");
+        exit(EXIT_FAILURE);
+    }
+    
+    /* Ensure enough space for keys. */
+    if (settings->known_titlekeys.count == 0) {
+        settings->known_titlekeys.titlekeys = malloc(1 * sizeof(titlekey_entry_t));
+
+    } else if ((settings->known_titlekeys.count & (settings->known_titlekeys.count + 1)) == 0) {
+        settings->known_titlekeys.titlekeys = realloc(settings->known_titlekeys.titlekeys, 2 * (settings->known_titlekeys.count + 1) * sizeof(titlekey_entry_t));
+    }
+    if (settings->known_titlekeys.titlekeys == NULL) {
+        fprintf(stderr, "Failed to allocate titlekey list!\n");
+        exit(EXIT_FAILURE);
+    }
+    
+    titlekey_entry_t *new_key = &settings->known_titlekeys.titlekeys[settings->known_titlekeys.count++];
+    
+    memcpy(new_key->rights_id, rights_id, 0x10);
+    memcpy(new_key->titlekey, titlekey, 0x10);
+}
+
+titlekey_entry_t *settings_get_titlekey(hactool_settings_t *settings, const unsigned char *rights_id) {
+    for (unsigned int i = 0; i < settings->known_titlekeys.count; i++) {
+        if (memcmp(settings->known_titlekeys.titlekeys[i].rights_id, rights_id, 0x10) == 0) {
+            return &settings->known_titlekeys.titlekeys[i];
+        }
+    }
+    
+    return NULL;
 }
 

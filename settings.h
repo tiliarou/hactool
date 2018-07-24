@@ -38,7 +38,7 @@ typedef struct {
     unsigned char header_kek_source[0x10];               /* Seed for header kek. */
     unsigned char sd_card_kek_source[0x10];              /* Seed for SD card kek. */
     unsigned char sd_card_key_sources[2][0x20];          /* Seed for SD card encryption keys. */
-    unsigned char encrypted_header_key[0x20];            /* Actual encrypted header key. */
+    unsigned char header_key_source[0x20];               /* Seed for NCA header key. */
     unsigned char header_key[0x20];                      /* NCA header key. */
     unsigned char titlekeks[0x20][0x10];                 /* Title key encryption keys. */
     unsigned char key_area_keys[0x20][3][0x10];          /* Key area encryption keys. */
@@ -54,12 +54,24 @@ typedef struct {
 } override_filepath_t;
 
 typedef struct {
-    nca_keyset_t keyset;
-    int has_titlekey;
+    unsigned char rights_id[0x10];
     unsigned char titlekey[0x10];
     unsigned char dec_titlekey[0x10];
-    int has_contentkey;
-    unsigned char contentkey[0x10];
+} titlekey_entry_t;
+
+typedef struct {
+    unsigned int count;
+    titlekey_entry_t *titlekeys;
+} known_titlekeys_t;
+
+typedef struct {
+    nca_keyset_t keyset;
+    int has_cli_titlekey;
+    unsigned char cli_titlekey[0x10];
+    unsigned char dec_cli_titlekey[0x10];
+    known_titlekeys_t known_titlekeys;
+    int has_cli_contentkey;
+    unsigned char cli_contentkey[0x10];
     int has_sdseed;
     unsigned char sdseed[0x10];
     unsigned char keygen_sbk[0x10];
@@ -77,6 +89,7 @@ typedef struct {
     filepath_t pk21_dir_path;
     filepath_t ini1_dir_path;
     filepath_t plaintext_path;
+    filepath_t uncompressed_path;
     filepath_t rootpt_dir_path;
     filepath_t update_dir_path;
     filepath_t normal_dir_path;
@@ -93,6 +106,7 @@ enum hactool_file_type
     FILETYPE_NCA,
     FILETYPE_PFS0,
     FILETYPE_ROMFS,
+    FILETYPE_NCA0_ROMFS,
     FILETYPE_HFS0,
     FILETYPE_XCI,
     FILETYPE_NPDM,
@@ -100,6 +114,7 @@ enum hactool_file_type
     FILETYPE_PACKAGE2,
     FILETYPE_INI1,
     FILETYPE_KIP1,
+    FILETYPE_NSO0,
     FILETYPE_NAX0,
     FILETYPE_BOOT0
 };
@@ -112,7 +127,7 @@ enum hactool_file_type
 #define ACTION_DEV (1<<5)
 #define ACTION_EXTRACTINI1 (1<<6)
 #define ACTION_ONLYUPDATEDROMFS (1<<7)
-#define ACTION_SAVEINIJSON (1<<0)
+#define ACTION_SAVEINIJSON (1<<8)
 
 struct nca_ctx; /* This will get re-defined by nca.h. */
 

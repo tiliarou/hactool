@@ -12,6 +12,7 @@
 #include "nax0.h"
 #include "extkeys.h"
 #include "packages.h"
+#include "nso.h"
 
 static char *prog_name = "hactool";
 
@@ -54,8 +55,13 @@ static void usage(void) {
         "  --basenca          Set Base NCA to use with update partitions.\n"
         "  --basefake         Use a fake Base RomFS with update partitions (all reads will return 0xCC).\n"
         "  --onlyupdated      Ignore non-updated files in update partitions.\n" 
-        "NPDM/KIP1 options:\n"
+        "NPDM options:\n"
         "  --json=file        Specify file path for saving JSON representation of program permissions to.\n"
+        "KIP1 options:\n"
+        "  --json=file        Specify file path for saving JSON representation of program permissions to.\n"
+        "  --uncompressed=f   Specify file path for saving uncompressed KIP1.\n"
+        "NSO0 options:\n"
+        "  --uncompressed=f   Specify file path for saving uncompressed NSO0.\n"
         "PFS0 options:\n"
         "  --pfs0dir=dir      Specify PFS0 directory path.\n"
         "  --outdir=dir       Specify PFS0 directory path. Overrides previous path, if present.\n"
@@ -86,7 +92,7 @@ static void usage(void) {
         "INI1 options:\n"
         "  --ini1dir=dir      Specify INI1 directory path.\n"
         "  --outdir=dir       Specify INI1 directory path. Overrides previous path, if present.\n"
-        "  --saveini1json      Enable generation of JSON descriptors for all INI1 members.\n"
+        "  --saveini1json     Enable generation of JSON descriptors for all INI1 members.\n"
         "NAX0 options:\n"
         "  --sdseed=seed      Set console unique seed for SD card NAX0 encryption.\n"
         "  --sdpath=path      Set relative path for NAX0 key derivation (ex: /registered/000000FF/cafebabecafebabecafebabecafebabe.nca).\n"
@@ -112,6 +118,7 @@ int main(int argc, char **argv) {
     memset(input_name, 0, sizeof(input_name));
     filepath_init(&keypath);
     nca_ctx.tool_ctx = &tool_ctx;
+    nca_ctx.is_cli_target = true;
     
     nca_ctx.tool_ctx->file_type = FILETYPE_NCA;
     base_ctx.file_type = FILETYPE_NCA;
@@ -121,7 +128,7 @@ int main(int argc, char **argv) {
 
     while (1) {
         int option_index;
-        char c;
+        int c;
         static struct option long_options[] = 
         {
             {"extract", 0, NULL, 'x'},
@@ -170,6 +177,7 @@ int main(int argc, char **argv) {
             {"tseckey", 1, NULL, 36},
             {"json", 1, NULL, 37},
             {"saveini1json", 0, NULL, 38},
+            {"uncompressed", 1, NULL, 39},
             {NULL, 0, NULL, 0},
         };
 
@@ -205,6 +213,8 @@ int main(int argc, char **argv) {
                     nca_ctx.tool_ctx->file_type = FILETYPE_PFS0;
                 } else if (!strcmp(optarg, "romfs")) {
                     nca_ctx.tool_ctx->file_type = FILETYPE_ROMFS; 
+                } else if (!strcmp(optarg, "nca0_romfs") || !strcmp(optarg, "nca0romfs") || !strcmp(optarg, "betaromfs") || !strcmp(optarg, "beta_romfs")) {
+                    nca_ctx.tool_ctx->file_type = FILETYPE_NCA0_ROMFS; 
                 } else if (!strcmp(optarg, "hfs0")) {
                     nca_ctx.tool_ctx->file_type = FILETYPE_HFS0;
                 } else if (!strcmp(optarg, "xci") || !strcmp(optarg, "gamecard") || !strcmp(optarg, "gc")) {
@@ -219,6 +229,8 @@ int main(int argc, char **argv) {
                     nca_ctx.tool_ctx->file_type = FILETYPE_INI1;
                 } else if (!strcmp(optarg, "kip1") || !strcmp(optarg, "kip")) {
                     nca_ctx.tool_ctx->file_type = FILETYPE_KIP1;
+                } else if (!strcmp(optarg, "nso0") || !strcmp(optarg, "nso")) {
+                    nca_ctx.tool_ctx->file_type = FILETYPE_NSO0;
                 } else if (!strcmp(optarg, "nax0") || !strcmp(optarg, "nax")) {
                     nca_ctx.tool_ctx->file_type = FILETYPE_NAX0;
                 } else if (!strcmp(optarg, "keygen") || !strcmp(optarg, "keys") || !strcmp(optarg, "boot0") || !strcmp(optarg, "boot")) {
@@ -250,12 +262,12 @@ int main(int argc, char **argv) {
                 filepath_set(&nca_ctx.tool_ctx->settings.romfs_dir_path.path, optarg); 
                 break;
             case 12:
-                parse_hex_key(nca_ctx.tool_ctx->settings.titlekey, optarg, 16);
-                nca_ctx.tool_ctx->settings.has_titlekey = 1;
+                parse_hex_key(nca_ctx.tool_ctx->settings.cli_titlekey, optarg, 16);
+                nca_ctx.tool_ctx->settings.has_cli_titlekey = 1;
                 break;
             case 13:
-                parse_hex_key(nca_ctx.tool_ctx->settings.contentkey, optarg, 16);
-                nca_ctx.tool_ctx->settings.has_contentkey = 1;
+                parse_hex_key(nca_ctx.tool_ctx->settings.cli_contentkey, optarg, 16);
+                nca_ctx.tool_ctx->settings.has_cli_contentkey = 1;
                 break;
             case 14:
                 nca_ctx.tool_ctx->action |= ACTION_LISTROMFS;
@@ -289,6 +301,7 @@ int main(int argc, char **argv) {
                 nca_init(nca_ctx.tool_ctx->base_nca_ctx);
                 base_ctx.file = nca_ctx.tool_ctx->base_file;
                 nca_ctx.tool_ctx->base_nca_ctx->file = base_ctx.file;
+                nca_ctx.tool_ctx->base_nca_ctx->is_cli_target = false;
                 break;
             case 17:
                 tool_ctx.settings.out_dir_path.enabled = 1;
@@ -369,6 +382,9 @@ int main(int argc, char **argv) {
             case 38:
                 tool_ctx.action |= ACTION_SAVEINIJSON;
                 break;
+            case 39:
+                filepath_set(&nca_ctx.tool_ctx->settings.uncompressed_path, optarg); 
+                break;
             default:
                 usage();
                 return EXIT_FAILURE;
@@ -376,40 +392,17 @@ int main(int argc, char **argv) {
     }
     
     /* Try to populate default keyfile. */
-    /* Use $HOME/.switch/prod.keys if it exists */
-    char *home = getenv("HOME");
-    if (home == NULL)
-        home = getenv("USERPROFILE");
-    if (keypath.valid == VALIDITY_INVALID) {
-        if (home != NULL) {
-            filepath_set(&keypath, home);
-            filepath_append(&keypath, ".switch");
-            filepath_append(&keypath, "%s.keys", (tool_ctx.action & ACTION_DEV) ? "dev" : "prod");
-        }
-    }
-
-    /* Load external keys, if relevant. */
     FILE *keyfile = NULL;
     if (keypath.valid == VALIDITY_VALID) {
         keyfile = os_fopen(keypath.os_path, OS_MODE_READ);
     }
-
-    /* If $HOME/.switch/prod.keys don't exist, try using $XDG_CONFIG_HOME */
-    if (keyfile == NULL) {
-        char *xdgconfig = getenv("XDG_CONFIG_HOME");
-        if (xdgconfig != NULL)
-            filepath_set(&keypath, xdgconfig);
-        else if (home != NULL) {
-            filepath_set(&keypath, home);
-            filepath_append(&keypath, ".config");
-        }
-        /* Keypath contains xdg config. Add switch/%s.keys */
-        filepath_append(&keypath, "switch");
-        filepath_append(&keypath, "%s.keys", (tool_ctx.action & ACTION_DEV) ? "dev" : "prod");
-    }
-
-    if (keyfile == NULL && keypath.valid == VALIDITY_VALID) {
-        keyfile = os_fopen(keypath.os_path, OS_MODE_READ);
+    FILE *homekeyfile = open_key_file((tool_ctx.action & ACTION_DEV) ? "dev" : "prod");
+    if (homekeyfile == NULL) {
+        printf("[WARN] %s.keys does not exist.\n", (tool_ctx.action & ACTION_DEV) ? "dev" : "prod");
+    } else if (keyfile == NULL) {
+        keyfile = homekeyfile;
+    } else {
+        fclose(homekeyfile);
     }
 
     if (keyfile != NULL) {
@@ -423,6 +416,12 @@ int main(int argc, char **argv) {
         }
         pki_derive_keys(&tool_ctx.settings.keyset);
         fclose(keyfile);
+    }
+    
+    /* Try to load titlekeys. */
+    FILE *titlekeyfile = open_key_file("title");
+    if (titlekeyfile != NULL) {
+        extkeys_parse_titlekeys(&tool_ctx.settings, titlekeyfile);
     }
 
     if (optind == argc - 1) {
@@ -524,6 +523,20 @@ int main(int argc, char **argv) {
             }
             break;
         }
+        case FILETYPE_NCA0_ROMFS: {
+            nca0_romfs_ctx_t romfs_ctx;
+            memset(&romfs_ctx, 0, sizeof(romfs_ctx));
+            romfs_ctx.file = tool_ctx.file;
+            romfs_ctx.tool_ctx = &tool_ctx;
+            nca0_romfs_process(&romfs_ctx);
+            if (romfs_ctx.files) {
+                free(romfs_ctx.files);
+            }
+            if (romfs_ctx.directories) {
+                free(romfs_ctx.directories);
+            }
+            break;
+        }
         case FILETYPE_NPDM: {
             npdm_t raw_hdr;
             memset(&raw_hdr, 0, sizeof(raw_hdr));
@@ -607,6 +620,20 @@ int main(int argc, char **argv) {
             }
             break;
         }
+        case FILETYPE_NSO0: {
+            nso0_ctx_t nso0_ctx;
+            memset(&nso0_ctx, 0, sizeof(nso0_ctx));
+            nso0_ctx.file = tool_ctx.file;
+            nso0_ctx.tool_ctx = &tool_ctx;
+            nso0_process(&nso0_ctx);
+            if (nso0_ctx.header) {
+                free(nso0_ctx.header);
+            }
+            if (nso0_ctx.uncompressed_header) {
+                free(nso0_ctx.uncompressed_header);
+            }
+            break;
+        }
         case FILETYPE_XCI: {
             xci_ctx_t xci_ctx;
             memset(&xci_ctx, 0, sizeof(xci_ctx));
@@ -646,6 +673,10 @@ int main(int argc, char **argv) {
             fprintf(stderr, "Unknown File Type!\n\n");
             usage();
         }
+    }
+    
+    if (tool_ctx.settings.known_titlekeys.titlekeys != NULL) {
+        free(tool_ctx.settings.known_titlekeys.titlekeys);
     }
 
     if (tool_ctx.file != NULL) {
