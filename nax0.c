@@ -3,7 +3,7 @@
 #include "sha.h"
 #include "nax0.h"
 
-size_t nax0_read(nax0_ctx_t *ctx, uint64_t offset, void *dst, size_t size) {
+static size_t nax0_read(nax0_ctx_t *ctx, uint64_t offset, void *dst, size_t size) {
     if (ctx->num_files == 1) {
         fseeko64(ctx->files[0], offset, SEEK_SET);
         return fread(dst, 1, size, ctx->files[0]);
@@ -108,46 +108,50 @@ void nax0_save(nax0_ctx_t *ctx) {
  /* Save Decrypted Contents. */
     filepath_t *dec_path = &ctx->tool_ctx->settings.plaintext_path;
 
-    if (dec_path->valid == VALIDITY_VALID) {
-        printf("Saving Decrypted NAX0 Content to %s...\n", dec_path->char_path);
-        FILE *f_dec = os_fopen(dec_path->os_path, OS_MODE_WRITE);
-
-        if (f_dec != NULL) {
-            uint64_t ofs = 0x4000;
-            uint64_t end_ofs = ofs + ctx->header.size;
-            unsigned char *buf = malloc(0x400000);
-            if (buf == NULL) {
-                fprintf(stderr, "Failed to allocate file-save buffer!\n");
-                exit(EXIT_FAILURE);
-            }
-            
-            uint64_t read_size = 0x400000; /* 4 MB buffer. */
-            memset(buf, 0xCC, read_size); /* Debug in case I fuck this up somehow... */
-            while (ofs < end_ofs) {       
-                if (ofs + read_size >= end_ofs) read_size = end_ofs - ofs;
-                if (nax0_read(ctx, ofs, buf, read_size) != read_size) {
-                    fprintf(stderr, "Failed to read file!\n");
-                    exit(EXIT_FAILURE);
-                }
-
-                uint64_t dec_size = (read_size + 0x3FFF) & ~0x3FFF;
-                aes_xts_decrypt(ctx->aes_ctx, buf, buf, dec_size, (ofs - 0x4000) >> 14, 0x4000);
-                
-                if (fwrite(buf, 1, read_size, f_dec) != read_size) {
-                    fprintf(stderr, "Failed to write file!\n");
-                    exit(EXIT_FAILURE);
-                }
-                ofs += read_size;
-            }
-            
-            free(buf);
-        } else {
-            fprintf(stderr, "Failed to open %s!\n", dec_path->char_path);
-        }
+    if (dec_path->valid != VALIDITY_VALID) {
+        return;
     }
+
+    printf("Saving Decrypted NAX0 Content to %s...\n", dec_path->char_path);
+    FILE *f_dec = os_fopen(dec_path->os_path, OS_MODE_WRITE);
+
+    if (f_dec == NULL) {
+        fprintf(stderr, "Failed to open %s!\n", dec_path->char_path);
+        return;
+    }
+
+    uint64_t ofs = 0x4000;
+    uint64_t end_ofs = ofs + ctx->header.size;
+    unsigned char *buf = malloc(0x400000);
+    if (buf == NULL) {
+        fprintf(stderr, "Failed to allocate file-save buffer!\n");
+        exit(EXIT_FAILURE);
+    }
+
+    uint64_t read_size = 0x400000; /* 4 MB buffer. */
+    memset(buf, 0xCC, read_size); /* Debug in case I fuck this up somehow... */
+    while (ofs < end_ofs) {
+        if (ofs + read_size >= end_ofs) read_size = end_ofs - ofs;
+        if (nax0_read(ctx, ofs, buf, read_size) != read_size) {
+            fprintf(stderr, "Failed to read file!\n");
+            exit(EXIT_FAILURE);
+        }
+
+        uint64_t dec_size = (read_size + 0x3FFF) & ~0x3FFF;
+        aes_xts_decrypt(ctx->aes_ctx, buf, buf, dec_size, (ofs - 0x4000) >> 14, 0x4000);
+
+        if (fwrite(buf, 1, read_size, f_dec) != read_size) {
+            fprintf(stderr, "Failed to write file!\n");
+            exit(EXIT_FAILURE);
+        }
+        ofs += read_size;
+    }
+
+    fclose(f_dec);
+    free(buf);
 }
 
-const char *nax0_get_key_summary(unsigned int k) {
+static const char *nax0_get_key_summary(unsigned int k) {
     switch (k) {
         case 0:
             return "Save";

@@ -14,7 +14,7 @@ void nca_init(nca_ctx_t *ctx) {
 }
 
 /* Updates the CTR for an offset. */
-void nca_update_ctr(unsigned char *ctr, uint64_t ofs) {
+static void nca_update_ctr(unsigned char *ctr, uint64_t ofs) {
     ofs >>= 4;
     for (unsigned int j = 0; j < 0x8; j++) {
         ctr[0x10-j-1] = (unsigned char)(ofs & 0xFF);
@@ -23,7 +23,7 @@ void nca_update_ctr(unsigned char *ctr, uint64_t ofs) {
 }
 
 /* Updates the CTR for a bktr offset. */
-void nca_update_bktr_ctr(unsigned char *ctr, uint32_t ctr_val, uint64_t ofs) {
+static void nca_update_bktr_ctr(unsigned char *ctr, uint32_t ctr_val, uint64_t ofs) {
     ofs >>= 4;
     for (unsigned int j = 0; j < 0x8; j++) {
         ctr[0x10-j-1] = (unsigned char)(ofs & 0xFF);
@@ -74,7 +74,7 @@ void nca_section_fseek(nca_section_ctx_t *ctx, uint64_t offset) {
     }
 }
 
-size_t nca_bktr_section_physical_fread(nca_section_ctx_t *ctx, void *buffer, size_t count) {
+static size_t nca_bktr_section_physical_fread(nca_section_ctx_t *ctx, void *buffer, size_t count) {
     size_t read = 0; /* XXX */
     size_t size = 1;
     char block_buf[0x10];
@@ -311,7 +311,7 @@ void nca_free_section_contexts(nca_ctx_t *ctx) {
     }
 }
 
-void nca_save(nca_ctx_t *ctx) {
+static void nca_save(nca_ctx_t *ctx) {
     /* Save header. */
     filepath_t *header_path = &ctx->tool_ctx->settings.header_path;
 
@@ -612,10 +612,18 @@ int nca_decrypt_header(nca_ctx_t *ctx) {
                 ctx->format_version = NCAVERSION_NCA0_BETA;
             }         
         } else {
-            ctx->format_version = NCAVERSION_NCA0;
-            aes_ctx_t *aes_ctx = new_aes_ctx(ctx->tool_ctx->settings.keyset.key_area_keys[ctx->crypto_type][dec_header.kaek_ind], 16, AES_MODE_ECB);
-            aes_decrypt(aes_ctx, ctx->decrypted_keys, dec_header.encrypted_keys, 0x20);
-            free_aes_ctx(aes_ctx);
+            unsigned char calc_hash[0x20];
+            static const unsigned char expected_hash[0x20] = {0x9A, 0xBB, 0xD2, 0x11, 0x86, 0x00, 0x21, 0x9D, 0x7A, 0xDC, 0x5B, 0x43, 0x95, 0xF8, 0x4E, 0xFD, 0xFF, 0x6B, 0x25, 0xEF, 0x9F, 0x96, 0x85, 0x28, 0x18, 0x9E, 0x76, 0xB0, 0x92, 0xF0, 0x6A, 0xCB};
+            sha256_hash_buffer(calc_hash, dec_header.encrypted_keys, 0x20);
+            if (memcmp(calc_hash, expected_hash, sizeof(calc_hash)) == 0) {
+                ctx->format_version = NCAVERSION_NCA0;
+                memcpy(ctx->decrypted_keys, dec_header.encrypted_keys, 0x40);
+            } else {
+                ctx->format_version = NCAVERSION_NCA0;
+                aes_ctx_t *aes_ctx = new_aes_ctx(ctx->tool_ctx->settings.keyset.key_area_keys[ctx->crypto_type][dec_header.kaek_ind], 16, AES_MODE_ECB);
+                aes_decrypt(aes_ctx, ctx->decrypted_keys, dec_header.encrypted_keys, 0x20);
+                free_aes_ctx(aes_ctx);
+            }
         }
         if (ctx->format_version != NCAVERSION_UNKNOWN) {
             memset(dec_header.fs_headers, 0, sizeof(dec_header.fs_headers));
@@ -649,7 +657,7 @@ void nca_decrypt_key_area(nca_ctx_t *ctx) {
 }
 
 
-char *nca_get_distribution_type(nca_ctx_t *ctx) {
+static char *nca_get_distribution_type(nca_ctx_t *ctx) {
     switch (ctx->header.distribution) {
         case 0:
             return "Download";
@@ -660,7 +668,7 @@ char *nca_get_distribution_type(nca_ctx_t *ctx) {
     }
 }
 
-char *nca_get_content_type(nca_ctx_t *ctx) {
+static char *nca_get_content_type(nca_ctx_t *ctx) {
     switch (ctx->header.content_type) {
         case 0:
             return "Program";
@@ -677,7 +685,7 @@ char *nca_get_content_type(nca_ctx_t *ctx) {
     }
 }
 
-char *nca_get_encryption_type(nca_ctx_t *ctx) {
+static char *nca_get_encryption_type(nca_ctx_t *ctx) {
     if (ctx->has_rights_id) {
         return "Titlekey crypto";
     } else {
@@ -685,7 +693,7 @@ char *nca_get_encryption_type(nca_ctx_t *ctx) {
     }
 }
 
-void nca_print_key_area(nca_ctx_t *ctx) {
+static void nca_print_key_area(nca_ctx_t *ctx) {
     if (ctx->format_version == NCAVERSION_NCA0_BETA) {
         printf("Key Area (Encrypted):\n");
         memdump(stdout, "Key (RSA-OAEP Encrypted):           ", &ctx->header.encrypted_keys, 0x100);
@@ -719,7 +727,7 @@ void nca_print_key_area(nca_ctx_t *ctx) {
     }
 }
 
-char *nca_get_section_type(nca_section_ctx_t *meta) {
+static char *nca_get_section_type(nca_section_ctx_t *meta) {
     switch (meta->type) {
         case PFS0: {
             if (meta->pfs0_ctx.is_exefs) return "ExeFS";
@@ -735,7 +743,7 @@ char *nca_get_section_type(nca_section_ctx_t *meta) {
 }
 
 
-void nca_print_sections(nca_ctx_t *ctx) {
+static void nca_print_sections(nca_ctx_t *ctx) {
     printf("Sections:\n");
     for (unsigned int i = 0; i < 4; i++) {
         if (ctx->section_contexts[i].is_present) { /* Section exists. */            
@@ -831,7 +839,7 @@ void nca_print(nca_ctx_t *ctx) {
     printf("\n");
 }
 
-validity_t nca_section_check_external_hash_table(nca_section_ctx_t *ctx, unsigned char *hash_table, uint64_t data_ofs, uint64_t data_len, uint64_t block_size, int full_block) {
+static validity_t nca_section_check_external_hash_table(nca_section_ctx_t *ctx, unsigned char *hash_table, uint64_t data_ofs, uint64_t data_len, uint64_t block_size, int full_block) {
     if (block_size == 0) {
         /* Block size of 0 is always invalid. */
         return VALIDITY_INVALID;
@@ -871,7 +879,7 @@ validity_t nca_section_check_external_hash_table(nca_section_ctx_t *ctx, unsigne
 
 }
 
-validity_t nca_section_check_hash_table(nca_section_ctx_t *ctx, uint64_t hash_ofs, uint64_t data_ofs, uint64_t data_len, uint64_t block_size, int full_block) {
+static validity_t nca_section_check_hash_table(nca_section_ctx_t *ctx, uint64_t hash_ofs, uint64_t data_ofs, uint64_t data_len, uint64_t block_size, int full_block) {
     if (block_size == 0) {
         /* Block size of 0 is always invalid. */
         return VALIDITY_INVALID;
@@ -898,7 +906,7 @@ validity_t nca_section_check_hash_table(nca_section_ctx_t *ctx, uint64_t hash_of
     return result;
 }
 
-void nca_save_pfs0_file(nca_section_ctx_t *ctx, uint32_t i, filepath_t *dirpath) {
+static void nca_save_pfs0_file(nca_section_ctx_t *ctx, uint32_t i, filepath_t *dirpath) {
     if (i >= ctx->pfs0_ctx.header->num_files) {
         fprintf(stderr, "Could not save file %"PRId32"!\n", i);
         exit(EXIT_FAILURE);
@@ -1191,8 +1199,7 @@ void nca_process_bktr_section(nca_section_ctx_t *ctx) {
                     exit(EXIT_FAILURE);
                 }
 
-                /* Switch RomFS has actual entries at table offset + 4 for no good reason. */
-                nca_section_fseek(ctx, ctx->bktr_ctx.romfs_offset + ctx->bktr_ctx.header.dir_meta_table_offset + 4);
+                nca_section_fseek(ctx, ctx->bktr_ctx.romfs_offset + ctx->bktr_ctx.header.dir_meta_table_offset);
                 if (nca_section_fread(ctx, ctx->bktr_ctx.directories, ctx->bktr_ctx.header.dir_meta_table_size) != ctx->bktr_ctx.header.dir_meta_table_size) {
                     fprintf(stderr, "Failed to read RomFS directory cache!\n");
                     exit(EXIT_FAILURE);
@@ -1431,7 +1438,7 @@ void nca_save_pfs0_section(nca_section_ctx_t *ctx) {
 }
 
 /* RomFS functions... */
-int nca_is_romfs_file_updated(nca_section_ctx_t *ctx, uint64_t file_offset, uint64_t file_size) {
+static int nca_is_romfs_file_updated(nca_section_ctx_t *ctx, uint64_t file_offset, uint64_t file_size) {
     /* All files in a Base RomFS are "updated". */
     if (ctx->type == ROMFS) {
         return 1;
@@ -1452,7 +1459,7 @@ int nca_is_romfs_file_updated(nca_section_ctx_t *ctx, uint64_t file_offset, uint
     return 0;
 }
 
-int nca_visit_romfs_file(nca_section_ctx_t *ctx, uint32_t file_offset, filepath_t *dir_path) {
+static int nca_visit_romfs_file(nca_section_ctx_t *ctx, uint32_t file_offset, filepath_t *dir_path) {
     romfs_fentry_t *entry;
     if (ctx->type == ROMFS) {
         entry = romfs_get_fentry(ctx->romfs_ctx.files, file_offset);
@@ -1499,7 +1506,7 @@ int nca_visit_romfs_file(nca_section_ctx_t *ctx, uint32_t file_offset, filepath_
     return found_file;
 }
 
-int nca_visit_nca0_romfs_file(nca_section_ctx_t *ctx, uint32_t file_offset, filepath_t *dir_path) {
+static int nca_visit_nca0_romfs_file(nca_section_ctx_t *ctx, uint32_t file_offset, filepath_t *dir_path) {
     romfs_fentry_t *entry = romfs_get_fentry(ctx->nca0_romfs_ctx.files, file_offset);
     filepath_t *cur_path = calloc(1, sizeof(filepath_t));
     if (cur_path == NULL) {
@@ -1533,7 +1540,7 @@ int nca_visit_nca0_romfs_file(nca_section_ctx_t *ctx, uint32_t file_offset, file
     return found_file;
 }
 
-int nca_visit_romfs_dir(nca_section_ctx_t *ctx, uint32_t dir_offset, filepath_t *parent_path) {
+static int nca_visit_romfs_dir(nca_section_ctx_t *ctx, uint32_t dir_offset, filepath_t *parent_path) {
     romfs_direntry_t *entry;
     if (ctx->type == ROMFS) {
         entry = romfs_get_direntry(ctx->romfs_ctx.directories, dir_offset);
@@ -1545,7 +1552,7 @@ int nca_visit_romfs_dir(nca_section_ctx_t *ctx, uint32_t dir_offset, filepath_t 
         fprintf(stderr, "Failed to allocate filepath!\n");
         exit(EXIT_FAILURE);
     }
-
+    
     filepath_copy(cur_path, parent_path);
     if (entry->name_size) {
         filepath_append_n(cur_path, entry->name_size, "%s", entry->name);
@@ -1578,7 +1585,7 @@ int nca_visit_romfs_dir(nca_section_ctx_t *ctx, uint32_t dir_offset, filepath_t 
     return any_files;
 }
 
-int nca_visit_nca0_romfs_dir(nca_section_ctx_t *ctx, uint32_t dir_offset, filepath_t *parent_path) {
+static int nca_visit_nca0_romfs_dir(nca_section_ctx_t *ctx, uint32_t dir_offset, filepath_t *parent_path) {
     romfs_direntry_t *entry = romfs_get_direntry(ctx->nca0_romfs_ctx.directories, dir_offset);
     filepath_t *cur_path = calloc(1, sizeof(filepath_t));
     if (cur_path == NULL) {

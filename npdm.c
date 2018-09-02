@@ -6,7 +6,7 @@
 #include "rsa.h"
 #include "cJSON.h"
 
-const char *svc_names[0x80] = {
+static const char * const svc_names[0x80] = {
     "svcUnknown",
     "svcSetHeapSize",
     "svcSetMemoryPermission",
@@ -141,7 +141,7 @@ const char *svc_names[0x80] = {
 #define MAX_FS_PERM_BOOL 0x1B
 #define FS_PERM_MASK_NODEBUG 0xBFFFFFFFFFFFFFFFULL
 
-const fs_perm_t fs_permissions_rw[MAX_FS_PERM_RW] = {
+static const fs_perm_t fs_permissions_rw[MAX_FS_PERM_RW] = {
     {"MountContentType2", 0x8000000000000801},
     {"MountContentType5", 0x8000000000000801},
     {"MountContentType3", 0x8000000000000801},
@@ -183,7 +183,7 @@ const fs_perm_t fs_permissions_rw[MAX_FS_PERM_RW] = {
     {"HostAccess", 0xC000000000400000}
 };
 
-const fs_perm_t fs_permissions_bool[MAX_FS_PERM_BOOL] = {
+static const fs_perm_t fs_permissions_bool[MAX_FS_PERM_BOOL] = {
     {"BisCache", 0x8000000000000080},
     {"EraseMmc", 0x8000000000000080},
     {"GameCardCertificate", 0x8000000000000010},
@@ -224,7 +224,7 @@ char *npdm_get_proc_category(int process_category) {
     }
 }
 
-char *kac_get_app_type(uint32_t app_type) {
+static char *kac_get_app_type(uint32_t app_type) {
     switch (app_type) {
         case 0:
             return "System Module";
@@ -237,7 +237,7 @@ char *kac_get_app_type(uint32_t app_type) {
     }
 }
 
-void kac_add_mmio(kac_t *kac, kac_mmio_t *mmio) {
+static void kac_add_mmio(kac_t *kac, kac_mmio_t *mmio) {
     /* Perform an ordered insertion. */
     if (kac->mmio == NULL || mmio->address < kac->mmio->address) {
         mmio->next = kac->mmio;
@@ -266,7 +266,7 @@ void kac_add_mmio(kac_t *kac, kac_mmio_t *mmio) {
     }
 }
 
-void kac_print(uint32_t *descriptors, uint32_t num_descriptors) {
+void kac_print(const uint32_t *descriptors, uint32_t num_descriptors) {
     kac_t kac;
     kac_mmio_t *cur_mmio = NULL;
     kac_mmio_t *page_mmio = NULL;
@@ -450,7 +450,7 @@ void kac_print(uint32_t *descriptors, uint32_t num_descriptors) {
 }
 
 /* Modified from https://stackoverflow.com/questions/23457305/compare-strings-with-wildcard */
-int match(const char *pattern, const char *candidate, int p, int c) {
+static int match(const char *pattern, const char *candidate, int p, int c) {
     if (pattern[p] == '\0') {
         return candidate[c] == '\0';
     } else if (pattern[p] == '*') {
@@ -464,7 +464,7 @@ int match(const char *pattern, const char *candidate, int p, int c) {
     }
 }
 
-int sac_matches(sac_entry_t *lst, char *service) {
+static int sac_matches(sac_entry_t *lst, char *service) {
     sac_entry_t *cur = lst;
     while (cur != NULL) {
         if (match(cur->service, service, 0, 0)) return 1;
@@ -473,7 +473,7 @@ int sac_matches(sac_entry_t *lst, char *service) {
     return 0;
 }
 
-void sac_parse(char *sac, uint32_t sac_size, sac_entry_t *r_host, sac_entry_t *r_accesses, sac_entry_t **out_hosts, sac_entry_t **out_accesses) {
+static void sac_parse(char *sac, uint32_t sac_size, sac_entry_t *r_host, sac_entry_t *r_accesses, sac_entry_t **out_hosts, sac_entry_t **out_accesses) {
     sac_entry_t *accesses = NULL;
     sac_entry_t *hosts = NULL;
     sac_entry_t *cur_entry = NULL;
@@ -513,7 +513,7 @@ void sac_parse(char *sac, uint32_t sac_size, sac_entry_t *r_host, sac_entry_t *r
     *out_accesses = accesses;
 }
 
-void sac_print(char *acid_sac, uint32_t acid_size, char *aci0_sac, uint32_t aci0_size) {
+static void sac_print(char *acid_sac, uint32_t acid_size, char *aci0_sac, uint32_t aci0_size) {
     /* Parse the ACID sac. */
     sac_entry_t *acid_accesses = NULL;
     sac_entry_t *acid_hosts = NULL;
@@ -558,7 +558,7 @@ void sac_print(char *acid_sac, uint32_t acid_size, char *aci0_sac, uint32_t aci0
 
 
 
-void fac_print(fac_t *fac, fah_t *fah) {
+static void fac_print(fac_t *fac, fah_t *fah) {
     if (fac->version == fah->version) {
         printf("        Version:                    %"PRId32"\n", fac->version);
     } else {
@@ -662,46 +662,50 @@ void npdm_print(npdm_t *npdm, hactool_ctx_t *tool_ctx) {
 
 void npdm_save(npdm_t *npdm, hactool_ctx_t *tool_ctx) {
     filepath_t *json_path = &tool_ctx->settings.npdm_json_path;
-    if (json_path->valid == VALIDITY_VALID) {
-        FILE *f_json = os_fopen(json_path->os_path, OS_MODE_WRITE);
-        if (f_json == NULL) {
-            fprintf(stderr, "Failed to open %s!\n", json_path->char_path);
-            return;
-        }
-        const char *json = npdm_get_json(npdm);
-        if (fwrite(json, 1, strlen(json), f_json) != strlen(json)) {
-            fprintf(stderr, "Failed to write JSON file!\n");
-            exit(EXIT_FAILURE);
-        }
-        fclose(f_json);
+    if (json_path->valid != VALIDITY_VALID) {
+        return;
     }
+
+    FILE *f_json = os_fopen(json_path->os_path, OS_MODE_WRITE);
+    if (f_json == NULL) {
+        fprintf(stderr, "Failed to open %s!\n", json_path->char_path);
+        return;
+    }
+
+    char *json = npdm_get_json(npdm);
+    if (fwrite(json, 1, strlen(json), f_json) != strlen(json)) {
+        fprintf(stderr, "Failed to write JSON file!\n");
+        exit(EXIT_FAILURE);
+    }
+    cJSON_free(json);
+    fclose(f_json);
 }
 
-void cJSON_AddU8ToObject(cJSON *obj, char *name, uint8_t val) {
+void cJSON_AddU8ToObject(cJSON *obj, const char *name, uint8_t val) {
     char buf[0x20] = {0};
     snprintf(buf, sizeof(buf), "0x%02"PRIx8, val);
     cJSON_AddStringToObject(obj, name, buf);
 }
 
-void cJSON_AddU16ToObject(cJSON *obj, char *name, uint16_t val) {
+void cJSON_AddU16ToObject(cJSON *obj, const char *name, uint16_t val) {
     char buf[0x20] = {0};
     snprintf(buf, sizeof(buf), "0x%04"PRIx16, val & 0xFFFF);
     cJSON_AddStringToObject(obj, name, buf);
 }
 
-void cJSON_AddU32ToObject(cJSON *obj, char *name, uint32_t val) {
+void cJSON_AddU32ToObject(cJSON *obj, const char *name, uint32_t val) {
     char buf[0x20] = {0};
     snprintf(buf, sizeof(buf), "0x%08"PRIx16, val);
     cJSON_AddStringToObject(obj, name, buf);
 }
 
-void cJSON_AddU64ToObject(cJSON *obj, char *name, uint64_t val) {
+void cJSON_AddU64ToObject(cJSON *obj, const char *name, uint64_t val) {
     char buf[0x20] = {0};
     snprintf(buf, sizeof(buf), "0x%016"PRIx64, val);
     cJSON_AddStringToObject(obj, name, buf);
 }
 
-cJSON *sac_get_json(char *sac, uint32_t sac_size) {
+static cJSON *sac_get_json(char *sac, uint32_t sac_size) {
     cJSON *sac_json = cJSON_CreateObject();
     char service[9] = {0};
     uint32_t ofs = 0;
@@ -719,7 +723,7 @@ cJSON *sac_get_json(char *sac, uint32_t sac_size) {
     return sac_json;
 }
 
-cJSON *kac_get_json(uint32_t *descriptors, uint32_t num_descriptors) {
+cJSON *kac_get_json(const uint32_t *descriptors, uint32_t num_descriptors) {
     cJSON *kac_json = cJSON_CreateObject();
     cJSON *temp = NULL;
     bool first_syscall = false;
@@ -828,11 +832,11 @@ cJSON *kac_get_json(uint32_t *descriptors, uint32_t num_descriptors) {
     return kac_json;
 }
 
-const char *npdm_get_json(npdm_t *npdm) {
+char *npdm_get_json(npdm_t *npdm) {
     npdm_acid_t *acid = npdm_get_acid(npdm);
     npdm_aci0_t *aci0 = npdm_get_aci0(npdm);
     cJSON *npdm_json = cJSON_CreateObject();
-    const char *output_str = NULL;
+    char *output_str = NULL;
     char work_buffer[0x300] = {0};
     
     /* Add NPDM header fields. */

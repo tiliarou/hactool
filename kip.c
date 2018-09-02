@@ -105,9 +105,9 @@ void ini1_save(ini1_ctx_t *ctx) {
     }
 }
 
-const char *kip1_get_json(kip1_ctx_t *ctx) {
+char *kip1_get_json(kip1_ctx_t *ctx) {
     cJSON *kip_json = cJSON_CreateObject();
-    const char *output_str = NULL;
+    char *output_str = NULL;
     char work_buffer[0x300] = {0};
     
     /* Add KIP1 header fields. */
@@ -129,7 +129,7 @@ const char *kip1_get_json(kip1_ctx_t *ctx) {
     return output_str;
 }
 
-void kip1_blz_uncompress(void *hdr_end) {
+static void kip1_blz_uncompress(void *hdr_end) {
     uint32_t addl_size = ((uint32_t *)hdr_end)[-1];
     uint32_t header_size = ((uint32_t *)hdr_end)[-2];
     uint32_t cmp_and_hdr_size = ((uint32_t *)hdr_end)[-3];
@@ -175,7 +175,7 @@ void kip1_blz_uncompress(void *hdr_end) {
     }
 }
 
-void *kip1_uncompress(kip1_ctx_t *ctx, uint64_t *size) {
+static void *kip1_uncompress(kip1_ctx_t *ctx, uint64_t *size) {
     /* Make new header with correct sizes, fixed flags. */
     kip1_header_t new_header = *ctx->header;
     for (unsigned int i = 0; i < 3; i++) {
@@ -272,11 +272,16 @@ void kip1_save(kip1_ctx_t *ctx) {
                 fprintf(stderr, "Failed to open %s!\n", json_path->char_path);
                 return;
             }
-            const char *json = kip1_get_json(ctx);
+            char *json = kip1_get_json(ctx);
+            if (json == NULL) {
+                fprintf(stderr, "Failed to allocate KIP1 JSON\n");
+                exit(EXIT_FAILURE);
+            }
             if (fwrite(json, 1, strlen(json), f_json) != strlen(json)) {
                 fprintf(stderr, "Failed to write JSON file!\n");
                 exit(EXIT_FAILURE);
             }
+            cJSON_free(json);
             fclose(f_json);
         } else if (uncmp_path->valid == VALIDITY_VALID) {
             FILE *f_uncmp = os_fopen(uncmp_path->os_path, OS_MODE_WRITE);
@@ -290,6 +295,7 @@ void kip1_save(kip1_ctx_t *ctx) {
                 fprintf(stderr, "Failed to write uncompressed kip!\n");
                 exit(EXIT_FAILURE);
             }
+            free(uncmp);
             fclose(f_uncmp);
         }
     }

@@ -14,7 +14,7 @@
 #include "packages.h"
 #include "nso.h"
 
-static char *prog_name = "hactool";
+static const char *prog_name = "hactool";
 
 /* Print usage. Taken largely from ctrtool. */
 static void usage(void) {
@@ -463,6 +463,7 @@ int main(int argc, char **argv) {
         case FILETYPE_NCA: {
             if (nca_ctx.tool_ctx->base_nca_ctx != NULL) {
                 memcpy(&base_ctx.settings.keyset, &tool_ctx.settings.keyset, sizeof(nca_keyset_t));
+                base_ctx.settings.known_titlekeys = tool_ctx.settings.known_titlekeys;
                 nca_ctx.tool_ctx->base_nca_ctx->tool_ctx = &base_ctx;
                 nca_process(nca_ctx.tool_ctx->base_nca_ctx);
                 int found_romfs = 0;
