@@ -22,6 +22,7 @@ Options:
   -t, --intype=type  Specify input file type [nca, xci, pfs0, romfs, hfs0, npdm, pk11, pk21, ini1, kip1, nax0, keygen]
   --titlekey=key     Set title key for Rights ID crypto titles.
   --contentkey=key   Set raw key for NCA body decryption.
+  --disablekeywarns  Disables warning output when loading external keys.
 NCA options:
   --plaintext=file   Specify file path for saving a decrypted copy of the NCA.
   --header=file      Specify Header file path.
@@ -83,6 +84,9 @@ INI1 options:
 NAX0 options:
   --sdseed=seed      Set console unique seed for SD card NAX0 encryption.
   --sdpath=path      Set relative path for NAX0 key derivation (ex: /registered/000000FF/cafebabecafebabecafebabecafebabe.nca).
+Save data options:
+  --outdir=dir       Specify save directory path.
+  --listfiles        List files in save file.
 Key Derivation options:
   --sbk=key          Set console unique Secure Boot Key for key derivation.
   --tseckey=key      Set console unique TSEC Key for key derivation.```

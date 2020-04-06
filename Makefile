@@ -7,14 +7,14 @@ LIBDIR = ./mbedtls/library
 CFLAGS += -D_BSD_SOURCE -D_POSIX_SOURCE -D_POSIX_C_SOURCE=200112L -D_DEFAULT_SOURCE -D__USE_MINGW_ANSI_STDIO=1 -D_FILE_OFFSET_BITS=64
 
 all:
-	cd mbedtls && $(MAKE) lib
-	$(MAKE) hactool
+	$(MAKE) -C mbedtls lib
+	$(MAKE) hactool$(EXEEXT)
 
 .c.o:
 	$(CC) $(INCLUDE) -c $(CFLAGS) -o $@ $<
 
-hactool: sha.o aes.o extkeys.o rsa.o npdm.o bktr.o kip.o packages.o pki.o pfs0.o hfs0.o nca0_romfs.o romfs.o utils.o nax0.o nso.o lz4.o nca.o xci.o main.o filepath.o ConvertUTF.o cJSON.o
-	$(CC) -o $@ $^ $(LDFLAGS) -L $(LIBDIR)
+hactool$(EXEEXT): save.o sha.o aes.o extkeys.o rsa.o npdm.o bktr.o kip.o packages.o pki.o pfs0.o hfs0.o nca0_romfs.o romfs.o utils.o nax0.o nso.o lz4.o nca.o xci.o main.o filepath.o ConvertUTF.o cJSON.o
+	$(CC) -o $@ $^ -L $(LIBDIR) $(LDFLAGS)
 
 aes.o: aes.h types.h
 
@@ -52,6 +52,8 @@ nca0_romfs.o: nca0_romfs.h ivfc.h types.h
 
 rsa.o: rsa.h sha.h types.h
 
+save.o: save.h ivfc.h aes.h sha.h filepath.h types.h
+
 sha.o: sha.h types.h
 
 utils.o: utils.h types.h
@@ -67,7 +69,7 @@ clean:
     
 clean_full:
 	rm -f *.o hactool hactool.exe
-	cd mbedtls && $(MAKE) clean
+	$(MAKE)-C mbedtls clean
 
 dist: clean_full
 	$(eval HACTOOLVER = $(shell grep '\bHACTOOL_VERSION\b' version.h \
